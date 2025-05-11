@@ -42,7 +42,7 @@ option_parser = OptionParser.new do |opts|
     options[:exclude_filter] = t
   end
 
-  opts.on("-a", "--all", "Expand downloading to error files (40x and 50x) and redirections (30x)") do |t|
+  opts.on("-a", "--all", "Expand downloading to error files (40x and 50x), resources (e.g.: CSS, JS, images, document, etc...) and redirections (30x)") do |t|
     options[:all] = true
   end
 
