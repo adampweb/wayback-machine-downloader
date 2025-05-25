@@ -9,7 +9,11 @@ services:
       - ENVIRONMENT=${DEVELOPMENT:-production}
       - OPTIONS=${OPTIONS:-""}
       - TARGET_URL=${TARGET_URL}
+    env_file:
+      - ./.env
     volumes:
+      - ./db/mysql_client.cnf:/etc/my.cnf:ro
+      - ./db/migrations:/build/db/migrations:rw
       - .:/build:rw
       - ./websites:/websites:rw
     command: /build/bin/wayback_machine_downloader ${TARGET_URL} ${OPTIONS}

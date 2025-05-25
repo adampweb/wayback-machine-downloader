@@ -1,5 +1,15 @@
 FROM ruby:3.4.4-alpine
 USER root
+
+# Necessary packages for Nokogiri & mysql2 gems
+RUN apk add --no-cache \
+  build-base \
+  libxml2-dev \
+  libxslt-dev \
+  tzdata \
+  mariadb-dev \
+  mariadb-client
+  
 WORKDIR /build
 
 COPY Gemfile /build/
