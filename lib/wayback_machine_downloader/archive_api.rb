@@ -4,6 +4,13 @@ require 'uri'
 module ArchiveAPI
 
   def get_raw_list_from_api(url, page_index, http)
+    # Automatically append /* if the URL doesn't contain a path after the domain
+    # This is a workaround for an issue with the API and *some* domains.
+    # See https://github.com/StrawberryMaster/wayback-machine-downloader/issues/6
+    if url && !url.match(/^https?:\/\/.*\//i)
+      url = "#{url}/*"
+    end
+
     request_url = URI("https://web.archive.org/cdx/search/cdx")
     params = [["output", "json"], ["url", url]] + parameters_for_api(page_index)
     request_url.query = URI.encode_www_form(params)

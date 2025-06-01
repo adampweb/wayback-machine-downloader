@@ -113,7 +113,7 @@ class WaybackMachineDownloader
 
   include ArchiveAPI
 
-  VERSION = "2.3.6"
+  VERSION = "2.3.7"
   DEFAULT_TIMEOUT = 30
   MAX_RETRIES = 3
   RETRY_DELAY = 2
@@ -154,10 +154,12 @@ class WaybackMachineDownloader
   end
 
   def backup_name
-    if @base_url.include? '//'
-      @base_url.split('/')[2]
+    url_to_process = @base_url.end_with?('/*') ? @base_url.chomp('/*') : @base_url
+    
+    if url_to_process.include? '//'
+      url_to_process.split('/')[2]
     else
-      @base_url
+      url_to_process
     end
   end
 
@@ -241,6 +243,7 @@ class WaybackMachineDownloader
     # Fetch the initial set of snapshots, sequentially
     @connection_pool.with_connection do |connection|
       initial_list = get_raw_list_from_api(@base_url, nil, connection)
+      initial_list ||= []
       mutex.synchronize do
         snapshot_list_to_consider.concat(initial_list)
         print "."
@@ -265,6 +268,7 @@ class WaybackMachineDownloader
             @connection_pool.with_connection do |connection|
               result = get_raw_list_from_api("#{@base_url}/*", page, connection)
             end
+            result ||= []
             [page, result]
           end
         end
@@ -284,7 +288,7 @@ class WaybackMachineDownloader
 
         # Process results and check for empty pages
         results.each do |page, result|
-          if result.empty?
+          if result.nil? || result.empty?
             continue_fetching = false
             break
           else
@@ -477,8 +481,8 @@ class WaybackMachineDownloader
         begin
           @connection_pool.with_connection do |connection|
             result_message = download_file(file_remote_info, connection)
-            # for now, assume success if no exception and message doesn't indicate error/skip
-            if result_message && !result_message.downcase.include?('error') && !result_message.downcase.include?('failed') && !result_message.downcase.include?('skipping') && !result_message.downcase.include?('already exists')
+            # assume download success if the result message contains ' -> '
+            if result_message && result_message.include?(' -> ')
                download_success = true
             end
             @download_mutex.synchronize do
@@ -659,11 +663,21 @@ class WaybackMachineDownloader
 
     begin
       structure_dir_path dir_path
-      download_with_retry(file_path, file_url, file_timestamp, http)
-      if @rewrite && File.extname(file_path) =~ /\.(html?|css|js)$/i
-        rewrite_urls_to_relative(file_path)
+      status = download_with_retry(file_path, file_url, file_timestamp, http)
+
+      case status
+      when :saved
+        if @rewrite && File.extname(file_path) =~ /\.(html?|css|js)$/i
+          rewrite_urls_to_relative(file_path)
+        end
+        "#{file_url} -> #{file_path} (#{@processed_file_count + 1}/#{@total_to_download})"
+      when :skipped_not_found
+        "Skipped (not found): #{file_url} (#{@processed_file_count + 1}/#{@total_to_download})"
+      else
+        # ideally, this case should not be reached if download_with_retry behaves as expected.
+        @logger.warn("Unknown status from download_with_retry for #{file_url}: #{status}")
+        "Unknown status for #{file_url}: #{status} (#{@processed_file_count + 1}/#{@total_to_download})"
       end
-      "#{file_url} -> #{file_path} (#{@processed_file_count + 1}/#{@total_to_download})"
     rescue StandardError => e
       msg = "Failed: #{file_url} # #{e} (#{@processed_file_count + 1}/#{@total_to_download})"
       if File.exist?(file_path) and File.size(file_path) == 0
@@ -714,8 +728,7 @@ class WaybackMachineDownloader
 
       response = connection.request(request)
 
-      case response
-      when Net::HTTPSuccess
+      save_response_body = lambda do
         File.open(file_path, "wb") do |file|
           body = response.body
           if response['content-encoding'] == 'gzip' && body && !body.empty?
@@ -725,26 +738,48 @@ class WaybackMachineDownloader
               gz.close
               file.write(decompressed_body)
             rescue Zlib::GzipFile::Error => e
-              @logger.warn("Failure decompressing gzip file #{file_url}: #{e.message}")
+              @logger.warn("Failure decompressing gzip file #{file_url}: #{e.message}. Writing raw body.")
               file.write(body)
             end
           else
             file.write(body) if body
           end
         end
-      when Net::HTTPRedirection
-        raise "Too many redirects for #{file_url}" if redirect_count >= 2
-        location = response['location']
-        @logger.warn("Redirect found for #{file_url} -> #{location}")
-        return download_with_retry(file_path, location, file_timestamp, connection, redirect_count + 1)
-      when Net::HTTPTooManyRequests
-        sleep(RATE_LIMIT * 2)
-        raise "Rate limited, retrying..."
-      when Net::HTTPNotFound
-        @logger.warn("File not found, skipping: #{file_url}")
-        return
-      else
-        raise "HTTP Error: #{response.code} #{response.message}"
+      end
+
+      if @all
+        case response
+        when Net::HTTPSuccess, Net::HTTPRedirection, Net::HTTPClientError, Net::HTTPServerError
+          save_response_body.call
+          if response.is_a?(Net::HTTPRedirection)
+            @logger.info("Saved redirect page for #{file_url} (status #{response.code}).")
+          elsif response.is_a?(Net::HTTPClientError) || response.is_a?(Net::HTTPServerError)
+            @logger.info("Saved error page for #{file_url} (status #{response.code}).")
+          end
+          return :saved
+        else
+          # for any other response type when --all is true, treat as an error to be retried or failed
+          raise "Unhandled HTTP response: #{response.code} #{response.message}"
+        end
+      else # not @all (our default behavior)
+        case response
+        when Net::HTTPSuccess
+          save_response_body.call
+          return :saved
+        when Net::HTTPRedirection
+          raise "Too many redirects for #{file_url}" if redirect_count >= 2
+          location = response['location']
+          @logger.warn("Redirect found for #{file_url} -> #{location}")
+          return download_with_retry(file_path, location, file_timestamp, connection, redirect_count + 1)
+        when Net::HTTPTooManyRequests
+          sleep(RATE_LIMIT * 2)
+          raise "Rate limited, retrying..."
+        when Net::HTTPNotFound
+          @logger.warn("File not found, skipping: #{file_url}")
+          return :skipped_not_found
+        else
+          raise "HTTP Error: #{response.code} #{response.message}"
+        end
       end
 
     rescue StandardError => e
