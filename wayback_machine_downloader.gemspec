@@ -13,4 +13,5 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "concurrent-ruby", "~> 1.3", ">= 1.3.4"
   s.add_development_dependency "rake", "~> 12.2"
   s.add_development_dependency "minitest", "~> 5.2"
+  s.add_development_dependency "simplecov", "~> 0.22"
 end
