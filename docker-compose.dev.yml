@@ -2,6 +2,7 @@ services:
   wayback_machine_downloader:
     build:
         context: .
+        dockerfile: ./Dockerfile.dev
     tty: true
     image: wayback_machine_downloader:latest
     container_name: wayback_machine_downloader
