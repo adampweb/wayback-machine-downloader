@@ -1,0 +1,15 @@
+services:
+  wayback_machine_downloader:
+    build:
+        context: .
+        dockerfile: ./Dockerfile.dev
+    tty: true
+    image: wayback_machine_downloader:latest
+    container_name: wayback_machine_downloader
+    env_file:
+      - ./.env
+    volumes:
+      - ./db/mysql_client.cnf:/etc/my.cnf:ro
+      - ./db/migrations:/build/db/migrations:rw
+      - .:/build:rw
+      - ./websites:/build/websites:rw
