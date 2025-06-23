@@ -384,7 +384,7 @@ class WaybackMachineDownloader
       end
     else
       file_list_curated = get_file_list_curated
-      file_list_curated = file_list_curated.sort_by { |k,v| v[:timestamp] }.reverse
+      file_list_curated = file_list_curated.sort_by { |_,v| v[:timestamp].to_s }.reverse
       file_list_curated.map do |file_remote_info|
         file_remote_info[1][:file_id] = file_remote_info[0]
         file_remote_info[1]
@@ -649,7 +649,7 @@ class WaybackMachineDownloader
         # for Windows, we need to sanitize path components to avoid invalid characters
         # this prevents issues with file names that contain characters not allowed in
         # Windows file systems. See # https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
-        element.gsub(/[:\*?"<>\|\&\=\/\\]/, ->(match) { '%' + match.ord.to_s(16).upcase })
+        element.gsub(/[:\*?"<>\|\&\=\/\\]/) { |match| '%' + match.ord.to_s(16).upcase }
       else
         element
       end
