@@ -11,6 +11,6 @@ Gem::Specification.new do |s|
   s.license     = "MIT"
   s.required_ruby_version = ">= 3.4.3"
   s.add_runtime_dependency "concurrent-ruby", "~> 1.3", ">= 1.3.4"
-  s.add_development_dependency "rake", "~> 12.2"
-  s.add_development_dependency "minitest", "~> 5.2"
+  s.add_development_dependency 'rspec', '~> 3.13', '>= 3.13.1'
+  s.add_development_dependency "simplecov", "~> 0.22"
 end
