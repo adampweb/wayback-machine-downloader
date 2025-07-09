@@ -74,6 +74,14 @@ option_parser = OptionParser.new do |opts|
     options[:keep] = true
   end
 
+  opts.on("--recursive-subdomains", "Recursively download content from subdomains") do |t|
+    options[:recursive_subdomains] = true
+  end
+
+  opts.on("--subdomain-depth DEPTH", Integer, "Maximum depth for subdomain recursion (default: 1)") do |t|
+    options[:subdomain_depth] = t
+  end
+
   opts.on("-v", "--version", "Display version") do |t|
     options[:version] = t
   end

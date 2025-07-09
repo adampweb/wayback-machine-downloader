@@ -14,6 +14,7 @@ require 'stringio'
 require_relative 'wayback_machine_downloader/tidy_bytes'
 require_relative 'wayback_machine_downloader/to_regex'
 require_relative 'wayback_machine_downloader/archive_api'
+require_relative 'wayback_machine_downloader/subdom_processor'
 
 class ConnectionPool
   MAX_AGE = 300
@@ -112,6 +113,7 @@ end
 class WaybackMachineDownloader
 
   include ArchiveAPI
+  include SubdomainProcessor
 
   VERSION = "2.3.10"
   DEFAULT_TIMEOUT = 30
@@ -153,6 +155,8 @@ class WaybackMachineDownloader
     @connection_pool = ConnectionPool.new(CONNECTION_POOL_SIZE)
     @db_mutex = Mutex.new
     @rewrite = params[:rewrite] || false
+    @recursive_subdomains = params[:recursive_subdomains] || false
+    @subdomain_depth = params[:subdomain_depth] || 1
 
     handle_reset
   end
@@ -513,6 +517,16 @@ class WaybackMachineDownloader
 
     end_time = Time.now
     puts "\nDownload finished in #{(end_time - start_time).round(2)}s."
+
+    # process subdomains if enabled
+    if @recursive_subdomains
+      subdomain_start_time = Time.now
+      process_subdomains
+      subdomain_end_time = Time.now
+      subdomain_time = (subdomain_end_time - subdomain_start_time).round(2)
+      puts "Subdomain processing finished in #{subdomain_time}s."
+    end
+
     puts "Results saved in #{backup_path}"
     cleanup
   end
