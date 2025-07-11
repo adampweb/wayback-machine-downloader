@@ -125,6 +125,7 @@ class WaybackMachineDownloader
   STATE_CDX_FILENAME = ".cdx.json"
   STATE_DB_FILENAME = ".downloaded.txt"
 
+
   attr_accessor :base_url, :exact_url, :directory, :all_timestamps,
     :from_timestamp, :to_timestamp, :only_filter, :exclude_filter,
     :all, :maximum_pages, :threads_count, :logger, :reset, :keep, :rewrite
@@ -157,6 +158,9 @@ class WaybackMachineDownloader
     @rewrite = params[:rewrite] || false
     @recursive_subdomains = params[:recursive_subdomains] || false
     @subdomain_depth = params[:subdomain_depth] || 1
+
+    # URL for rejecting invalid/unencoded wayback urls
+    @url_regexp = /^(([A-Za-z][A-Za-z0-9+.-]*):((\/\/(((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=]))+)(:([0-9]*))?)(((\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)))|((\/(((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)+)(\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)?))|((((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)+)(\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)))(\?((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)|\/|\?)*)?(\#((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)|\/|\?)*)?)$/
 
     handle_reset
   end
@@ -753,6 +757,12 @@ class WaybackMachineDownloader
 
       # Escape square brackets because they are not valid in URI()
       wayback_url = wayback_url.gsub('[', '%5B').gsub(']', '%5D')
+
+      # reject invalid/unencoded wayback_url, behaving as if the resource weren't found
+      if not @url_regexp.match?(wayback_url)
+          @logger.warn("Skipped #{file_url}: invalid URL")
+          return :skipped_not_found
+      end
 
       request = Net::HTTP::Get.new(URI(wayback_url))
       request["Connection"] = "keep-alive"
