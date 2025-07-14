@@ -27,6 +27,7 @@ To run most commands, just like in the original WMD, you can use:
 ```bash
 wayback_machine_downloader https://example.com
 ```
+**Note**: this gem may conflict with hartator's wayback_machine_downloader gem, and so you may have to uninstall it for this WMD fork to work. A good way to know is if a command fails; it will list the gem version as 2.3.1 or earlier, while this WMD fork uses 2.3.2 or above.
 
 ### Step-by-step setup
 1. **Install Ruby**:
