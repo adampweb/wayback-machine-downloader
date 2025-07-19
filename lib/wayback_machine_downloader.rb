@@ -204,7 +204,7 @@ class WaybackMachineDownloader
 
   def match_only_filter file_url
     if @only_filter
-      only_filter_regex = @only_filter.to_regex
+      only_filter_regex = @only_filter.to_regex(detect: true)
       if only_filter_regex
         only_filter_regex =~ file_url
       else
@@ -217,7 +217,7 @@ class WaybackMachineDownloader
 
   def match_exclude_filter file_url
     if @exclude_filter
-      exclude_filter_regex = @exclude_filter.to_regex
+      exclude_filter_regex = @exclude_filter.to_regex(detect: true)
       if exclude_filter_regex
         exclude_filter_regex =~ file_url
       else
