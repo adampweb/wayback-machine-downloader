@@ -4,14 +4,14 @@ require_relative '../lib/wayback_machine_downloader'
 
 RSpec.describe WaybackMachineDownloader do
 
-    #let(:app_instance) { WaybackMachineDownloader.new(base_url: 'https://thomaston4thofjuly.com') }
-   
+    # Target file: lib/wayback_machine_downloader.rb
     before do
         @wayback_machine_downloader = WaybackMachineDownloader.new(base_url: 'https://thomaston4thofjuly.com')
     end
 
-    
-
+    #
+    # Target function / method: initialize
+    #
     it 'base url being set' do
         actual_base_url = @wayback_machine_downloader.base_url
 
@@ -19,19 +19,36 @@ RSpec.describe WaybackMachineDownloader do
         expect(actual_base_url).not_to eq('https://example.com')
     end
 
+    # 
+    # Target function / method: backup_name
+    #
     it 'backup name being set' do
         actual_backup_name = @wayback_machine_downloader.backup_name
         
         expect(actual_backup_name).to eq('thomaston4thofjuly.com')
-        expect(actual_backup_name).not_to eq('www.example.com')
+        expect(actual_backup_name).not_to eq('https://thomaston4thofjuly.com')
     end
 
+    #
+    # Target function / method: backup_name
+    #
     it 'backup name being set when base url is domain' do
         @wayback_machine_downloader.base_url = 'thomaston4thofjuly.com'
         
         expect(@wayback_machine_downloader.backup_name).to eq('thomaston4thofjuly.com')
     end
 
+    #
+    # Target function / method: backup_path
+    #
+    # Tests the app forcing to add trailing slash to the backup (saving) path
+    #
+    #
+    # Passed params:
+    # - directory = '/docs/blog'
+    # Expected result:
+    # @wayback_machine_downloader.backup_path = '/docs/blog/'
+    #
     it 'adding trailing slash to backup path when it was not contains' do
         @wayback_machine_downloader.directory = '/docs/blog'
 

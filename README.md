@@ -257,6 +257,38 @@ ruby wayback_machine_downloader https://example.com --keep
 ```
 This can be useful for debugging or if you plan to extend the download later with different parameters (e.g., adding `--to` timestamp) while leveraging the existing snapshot list.
 
+## :mag:  Testing
+   :bangbang: Work in progress...
+   
+   Rewrites test for app based on [hartator/wayback-machine-downloader](hartator/wayback-machine-downloader) test. That file had been abandoned a long time ago so it's time to update it. At the same time, it's time to replace old testing elvironment (Rake) with [RSpec](https://rspec.info/).
+
+### Running tests
+
+After you create the wayback_machine_downloader container, you can execute the test in multiple scenarios:
+
+**Important notes: :bangbang:**
+To run the test tool, you need to temporarily override the "Entrypoint" of the Docker container.
+
+**1st scenario**: Runs all tests in the test directory (in case of RSpec it is named as "spec"):
+```bash
+docker compose run --rm --entrypoint sh wayback_machine_downloader -c "rspec"
+```
+
+**2nd scenario**: Runs tests nested under a directory, like requests:
+```bash
+docker compose run --rm --entrypoint sh wayback_machine_downloader -c "rspec spec/requests"
+```
+
+**3rd scenario**: Runs a single specific test file:
+```bash
+docker compose run --rm --entrypoint sh wayback_machine_downloader -c "rspec spec/test_wayback_machine_downloader_spec.rb"
+```
+
+**4th scenario**: Runs a test or subset of tests within a file e.g., if the '**it**', '**describe**', or '**context**' block you wish to test starts at line 45, run:
+```bash
+docker compose run --rm --entrypoint sh wayback_machine_downloader -c "rspec spec/requests/groups_spec.rb:45"
+```
+
 ## 🤝 Contributing
 1. Fork the repository
 2. Create a feature branch
