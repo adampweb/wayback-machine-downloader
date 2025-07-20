@@ -31,6 +31,7 @@ module TidyBytes
     when 156 then [197, 147]       # LATIN SMALL LIGATURE OE
     when 158 then [197, 190]       # LATIN SMALL LETTER Z WITH CARON
     when 159 then [197, 184]       # LATIN SMALL LETTER Y WITH DIAERESIS
+    else nil                       # ANYTHING ELSE...
     end
   end.freeze
 
