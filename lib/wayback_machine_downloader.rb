@@ -128,7 +128,8 @@ class WaybackMachineDownloader
 
   attr_accessor :base_url, :exact_url, :directory, :all_timestamps,
     :from_timestamp, :to_timestamp, :only_filter, :exclude_filter,
-    :all, :maximum_pages, :threads_count, :logger, :reset, :keep, :rewrite
+    :all, :maximum_pages, :threads_count, :logger, :reset, :keep, :rewrite,
+    :snapshot_at
 
   def initialize params
     validate_params(params)
@@ -158,6 +159,7 @@ class WaybackMachineDownloader
     @rewrite = params[:rewrite] || false
     @recursive_subdomains = params[:recursive_subdomains] || false
     @subdomain_depth = params[:subdomain_depth] || 1
+    @snapshot_at = params[:snapshot_at] ? params[:snapshot_at].to_i : nil
 
     # URL for rejecting invalid/unencoded wayback urls
     @url_regexp = /^(([A-Za-z][A-Za-z0-9+.-]*):((\/\/(((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=]))+)(:([0-9]*))?)(((\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)))|((\/(((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)+)(\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)?))|((((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)+)(\/((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)*))*)))(\?((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)|\/|\?)*)?(\#((([A-Za-z0-9._~-])|(%[ABCDEFabcdef0-9][ABCDEFabcdef0-9])|([!$&'('')'*+,;=])|:|@)|\/|\?)*)?)$/
@@ -330,6 +332,36 @@ class WaybackMachineDownloader
     snapshot_list_to_consider
   end
 
+  # Get a composite snapshot file list for a specific timestamp
+  def get_composite_snapshot_file_list(target_timestamp)
+    file_versions = {}
+    get_all_snapshots_to_consider.each do |file_timestamp, file_url|
+      next unless file_url.include?('/')
+      next if file_timestamp.to_i > target_timestamp
+      file_id = file_url.split('/')[3..-1].join('/')
+      file_id = CGI::unescape file_id
+      file_id = file_id.tidy_bytes unless file_id == ""
+      next if file_id.nil?
+      next if match_exclude_filter(file_url)
+      next unless match_only_filter(file_url)
+      # Select the most recent version <= target_timestamp
+      if !file_versions[file_id] || file_versions[file_id][:timestamp].to_i < file_timestamp.to_i
+        file_versions[file_id] = {file_url: file_url, timestamp: file_timestamp, file_id: file_id}
+      end
+    end
+    file_versions.values
+  end
+
+  # Returns a list of files for the composite snapshot
+  def get_file_list_composite_snapshot(target_timestamp)
+    file_list = get_composite_snapshot_file_list(target_timestamp)
+    file_list = file_list.sort_by { |_,v| v[:timestamp].to_s }.reverse
+    file_list.map do |file_remote_info|
+      file_remote_info[1][:file_id] = file_remote_info[0]
+      file_remote_info[1]
+    end
+  end
+
   def get_file_list_curated
     file_list_curated = Hash.new
     get_all_snapshots_to_consider.each do |file_timestamp, file_url|
@@ -384,7 +416,9 @@ class WaybackMachineDownloader
 
 
   def get_file_list_by_timestamp
-    if @all_timestamps
+    if @snapshot_at
+      @file_list_by_snapshot_at ||= get_composite_snapshot_file_list(@snapshot_at)
+    elsif @all_timestamps
       file_list_curated = get_file_list_all_timestamps
       file_list_curated.map do |file_remote_info|
         file_remote_info[1][:file_id] = file_remote_info[0]
@@ -727,7 +761,22 @@ class WaybackMachineDownloader
   end
 
   def file_list_by_timestamp
-    @file_list_by_timestamp ||= get_file_list_by_timestamp
+    if @snapshot_at
+      @file_list_by_snapshot_at ||= get_composite_snapshot_file_list(@snapshot_at)
+    elsif @all_timestamps
+      file_list_curated = get_file_list_all_timestamps
+      file_list_curated.map do |file_remote_info|
+        file_remote_info[1][:file_id] = file_remote_info[0]
+        file_remote_info[1]
+      end
+    else
+      file_list_curated = get_file_list_curated
+      file_list_curated = file_list_curated.sort_by { |_,v| v[:timestamp].to_s }.reverse
+      file_list_curated.map do |file_remote_info|
+        file_remote_info[1][:file_id] = file_remote_info[0]
+        file_remote_info[1]
+      end
+    end
   end
 
   private
