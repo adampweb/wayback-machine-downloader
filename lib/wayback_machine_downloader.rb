@@ -115,7 +115,7 @@ class WaybackMachineDownloader
   include ArchiveAPI
   include SubdomainProcessor
 
-  VERSION = "2.3.12"
+  VERSION = "2.3.11"
   DEFAULT_TIMEOUT = 30
   MAX_RETRIES = 3
   RETRY_DELAY = 2
@@ -350,16 +350,6 @@ class WaybackMachineDownloader
       end
     end
     file_versions.values
-  end
-
-  # Returns a list of files for the composite snapshot
-  def get_file_list_composite_snapshot(target_timestamp)
-    file_list = get_composite_snapshot_file_list(target_timestamp)
-    file_list = file_list.sort_by { |_,v| v[:timestamp].to_s }.reverse
-    file_list.map do |file_remote_info|
-      file_remote_info[1][:file_id] = file_remote_info[0]
-      file_remote_info[1]
-    end
   end
 
   def get_file_list_curated
@@ -694,6 +684,7 @@ class WaybackMachineDownloader
     file_timestamp = file_remote_info[:timestamp]
     
     # sanitize file_id to ensure it is a valid path component
+    file_id = file_id.tidy_bytes if file_id
     raw_path_elements = file_id.split('/')
 
     sanitized_path_elements = raw_path_elements.map do |element|
