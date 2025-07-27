@@ -133,10 +133,11 @@ class WaybackMachineDownloader
 
   def initialize params
     validate_params(params)
-    @base_url = params[:base_url]
+    @base_url = params[:base_url]&.tidy_bytes
     @exact_url = params[:exact_url]
     if params[:directory]
-      @directory = File.expand_path(params[:directory])
+      sanitized_dir = params[:directory].tidy_bytes
+      @directory = File.expand_path(sanitized_dir)
     else
       @directory = nil
     end
@@ -694,7 +695,6 @@ class WaybackMachineDownloader
     file_timestamp = file_remote_info[:timestamp]
     
     # sanitize file_id to ensure it is a valid path component
-    file_id = file_id.tidy_bytes if file_id
     raw_path_elements = file_id.split('/')
 
     sanitized_path_elements = raw_path_elements.map do |element|

@@ -25,7 +25,7 @@ module ArchiveAPI
       # Check if the response contains the header ["timestamp", "original"]
       json.shift if json.first == ["timestamp", "original"]
       json
-    rescue JSON::ParserError, StandardError => e
+    rescue JSON::ParserError => e
       warn "Failed to fetch data from API: #{e.message}"
       []
     end
