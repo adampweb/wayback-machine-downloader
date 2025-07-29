@@ -15,6 +15,7 @@ require_relative 'wayback_machine_downloader/tidy_bytes'
 require_relative 'wayback_machine_downloader/to_regex'
 require_relative 'wayback_machine_downloader/archive_api'
 require_relative 'wayback_machine_downloader/subdom_processor'
+require_relative 'wayback_machine_downloader/url_rewrite'
 
 class ConnectionPool
   MAX_AGE = 300
@@ -474,6 +475,39 @@ class WaybackMachineDownloader
     end
   end
 
+  def processing_files(pool, files_to_process)
+    files_to_process.each do |file_remote_info|
+      pool.post do
+        download_success = false
+        begin
+          @connection_pool.with_connection do |connection|
+            result_message = download_file(file_remote_info, connection)
+            # assume download success if the result message contains ' -> '
+            if result_message && result_message.include?(' -> ')
+               download_success = true
+            end
+            @download_mutex.synchronize do
+              @processed_file_count += 1
+              # adjust progress message to reflect remaining files
+              progress_message = result_message.sub(/\(#{@processed_file_count}\/\d+\)/, "(#{@processed_file_count}/#{@total_to_download})") if result_message
+              puts progress_message if progress_message
+            end
+          end
+          # sppend to DB only after successful download outside the connection block
+          if download_success
+            append_to_db(file_remote_info[:file_id])
+          end
+        rescue => e
+          @logger.error("Error processing file #{file_remote_info[:file_url]}: #{e.message}")
+           @download_mutex.synchronize do
+              @processed_file_count += 1
+           end
+        end
+        sleep(RATE_LIMIT)
+      end
+    end
+  end
+
   def download_files
     start_time = Time.now
     puts "Downloading #{@base_url} to #{backup_path} from Wayback Machine archives."
@@ -520,36 +554,7 @@ class WaybackMachineDownloader
     thread_count = [@threads_count, CONNECTION_POOL_SIZE].min
     pool = Concurrent::FixedThreadPool.new(thread_count)
 
-    files_to_process.each do |file_remote_info|
-      pool.post do
-        download_success = false
-        begin
-          @connection_pool.with_connection do |connection|
-            result_message = download_file(file_remote_info, connection)
-            # assume download success if the result message contains ' -> '
-            if result_message && result_message.include?(' -> ')
-               download_success = true
-            end
-            @download_mutex.synchronize do
-              @processed_file_count += 1
-              # adjust progress message to reflect remaining files
-              progress_message = result_message.sub(/\(#{@processed_file_count}\/\d+\)/, "(#{@processed_file_count}/#{@total_to_download})") if result_message
-              puts progress_message if progress_message
-            end
-          end
-          # sppend to DB only after successful download outside the connection block
-          if download_success
-            append_to_db(file_remote_info[:file_id])
-          end
-        rescue => e
-          @logger.error("Error processing file #{file_remote_info[:file_url]}: #{e.message}")
-           @download_mutex.synchronize do
-              @processed_file_count += 1
-           end
-        end
-        sleep(RATE_LIMIT)
-      end
-    end
+    processing_files(pool, files_to_process)
 
     pool.shutdown
     pool.wait_for_termination
@@ -609,64 +614,13 @@ class WaybackMachineDownloader
       end
 
       # URLs in HTML attributes
-      content.gsub!(/(\s(?:href|src|action|data-src|data-url)=["'])https?:\/\/web\.archive\.org\/web\/[0-9]+(?:id_)?\/([^"']+)(["'])/i) do
-        prefix, url, suffix = $1, $2, $3
-        
-        if url.start_with?('http')
-          begin
-            uri = URI.parse(url)
-            path = uri.path
-            path = path[1..-1] if path.start_with?('/')
-            "#{prefix}#{path}#{suffix}"
-          rescue
-            "#{prefix}#{url}#{suffix}"
-          end
-        elsif url.start_with?('/')
-          "#{prefix}./#{url[1..-1]}#{suffix}"
-        else
-          "#{prefix}#{url}#{suffix}"
-        end
-      end
+      rewrite_html_attr_urls(content)
       
       # URLs in CSS
-      content.gsub!(/url\(\s*["']?https?:\/\/web\.archive\.org\/web\/[0-9]+(?:id_)?\/([^"'\)]+)["']?\s*\)/i) do
-        url = $1
-        
-        if url.start_with?('http')
-          begin
-            uri = URI.parse(url)
-            path = uri.path
-            path = path[1..-1] if path.start_with?('/')
-            "url(\"#{path}\")"
-          rescue
-            "url(\"#{url}\")"
-          end
-        elsif url.start_with?('/')
-          "url(\"./#{url[1..-1]}\")"
-        else
-          "url(\"#{url}\")"
-        end
-      end
+      rewrite_css_urls(content)
       
       # URLs in JavaScript
-      content.gsub!(/(["'])https?:\/\/web\.archive\.org\/web\/[0-9]+(?:id_)?\/([^"']+)(["'])/i) do
-        quote_start, url, quote_end = $1, $2, $3
-        
-        if url.start_with?('http')
-          begin
-            uri = URI.parse(url)
-            path = uri.path
-            path = path[1..-1] if path.start_with?('/')
-            "#{quote_start}#{path}#{quote_end}"
-          rescue
-            "#{quote_start}#{url}#{quote_end}"
-          end
-        elsif url.start_with?('/')
-          "#{quote_start}./#{url[1..-1]}#{quote_end}"
-        else
-          "#{quote_start}#{url}#{quote_end}"
-        end
-      end
+      rewrite_js_urls(content)
       
       # for URLs in HTML attributes that start with a single slash
       content.gsub!(/(\s(?:href|src|action|data-src|data-url)=["'])\/([^"'\/][^"']*)(["'])/i) do
