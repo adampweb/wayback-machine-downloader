@@ -5,11 +5,6 @@ services:
     tty: true
     image: wayback_machine_downloader:latest
     container_name: wayback_machine_downloader
-    environment:
-      - ENVIRONMENT=${DEVELOPMENT:-production}
-      - OPTIONS=${OPTIONS:-""}
-      - TARGET_URL=${TARGET_URL}
     volumes:
       - .:/build:rw
-      - ./websites:/websites:rw
-    command: /build/bin/wayback_machine_downloader ${TARGET_URL} ${OPTIONS}
+      - ./websites:/build/websites:rw

@@ -81,36 +81,19 @@ services:
     tty: true
     image: wayback_machine_downloader:latest
     container_name: wayback_machine_downloader
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - OPTIONS=${OPTIONS:-""}
-      - TARGET_URL=${TARGET_URL}
     volumes:
       - .:/build:rw
       - ./websites:/build/websites:rw
-    command: --directory /build/websites ${OPTIONS} ${TARGET_URL}
 ```
 #### Usage:
-Now You can create a Docker image as named "wayback_machine_downloader" with the following command:
+Now you can create a Docker image as named "wayback_machine_downloader" with the following command:
 ```bash
 docker compose up -d --build
 ```
 
-After that you must set TARGET_URL environment variable:
-```bash
-export TARGET_URL="https://example.com/"
-```
-
-The **OPTIONS** env. variable is optional this may include additional settings which are found in the "**Advanced usage**" section below.
-
-Example:
-```bash
-export OPTIONS="--list -f 20060121"
-```
-
 After that you can run the exists container with the following command:
 ```bash
-docker compose run --rm wayback_machine_downloader https://example.com
+docker compose run --rm wayback_machine_downloader https://example.com [options]
 ```
 
 ## ⚙️ Configuration
