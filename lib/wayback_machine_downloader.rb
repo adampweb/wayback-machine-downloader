@@ -342,6 +342,7 @@ class WaybackMachineDownloader
       next if file_timestamp.to_i > target_timestamp
       file_id = file_url.split('/')[3..-1].join('/')
       file_id = CGI::unescape file_id
+      file_id.gsub!(/<[^>]*>/, '') # sanitize HTML tags
       file_id = file_id.tidy_bytes unless file_id == ""
       next if file_id.nil?
       next if match_exclude_filter(file_url)
@@ -370,9 +371,12 @@ class WaybackMachineDownloader
       next unless file_url.include?('/')
       file_id = file_url.split('/')[3..-1].join('/')
       file_id = CGI::unescape file_id
+      file_id.gsub!(/<[^>]*>/, '') # sanitize HTML tags
       file_id = file_id.tidy_bytes unless file_id == ""
       if file_id.nil?
         puts "Malformed file url, ignoring: #{file_url}"
+      elsif file_id.include?('<') || file_id.include?('>')
+        puts "Invalid characters in file_id after sanitization, ignoring: #{file_url}"
       else
         if match_exclude_filter(file_url)
           puts "File url matches exclude filter, ignoring: #{file_url}"
@@ -397,9 +401,12 @@ class WaybackMachineDownloader
       file_id = file_url.split('/')[3..-1].join('/')
       file_id_and_timestamp = [file_timestamp, file_id].join('/')
       file_id_and_timestamp = CGI::unescape file_id_and_timestamp
+      file_id_and_timestamp.gsub!(/<[^>]*>/, '') # sanitize HTML tags
       file_id_and_timestamp = file_id_and_timestamp.tidy_bytes unless file_id_and_timestamp == ""
       if file_id.nil?
         puts "Malformed file url, ignoring: #{file_url}"
+      elsif file_id_and_timestamp.include?('<') || file_id_and_timestamp.include?('>')
+        puts "Invalid characters in file_id after sanitization, ignoring: #{file_url}"
       else
         if match_exclude_filter(file_url)
           puts "File url matches exclude filter, ignoring: #{file_url}"
