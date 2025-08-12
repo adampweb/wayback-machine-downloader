@@ -340,16 +340,15 @@ class WaybackMachineDownloader
     get_all_snapshots_to_consider.each do |file_timestamp, file_url|
       next unless file_url.include?('/')
       next if file_timestamp.to_i > target_timestamp
-      file_id = file_url.split('/')[3..-1].join('/')
-      file_id = CGI::unescape file_id
-      file_id.gsub!(/<[^>]*>/, '') # sanitize HTML tags
-      file_id = file_id.tidy_bytes unless file_id == ""
+
+      raw_tail = file_url.split('/')[3..-1]&.join('/')
+      file_id = sanitize_and_prepare_id(raw_tail, file_url)
       next if file_id.nil?
       next if match_exclude_filter(file_url)
       next unless match_only_filter(file_url)
-      # Select the most recent version <= target_timestamp
+
       if !file_versions[file_id] || file_versions[file_id][:timestamp].to_i < file_timestamp.to_i
-        file_versions[file_id] = {file_url: file_url, timestamp: file_timestamp, file_id: file_id}
+        file_versions[file_id] = { file_url: file_url, timestamp: file_timestamp, file_id: file_id }
       end
     end
     file_versions.values
@@ -369,25 +368,27 @@ class WaybackMachineDownloader
     file_list_curated = Hash.new
     get_all_snapshots_to_consider.each do |file_timestamp, file_url|
       next unless file_url.include?('/')
-      file_id = file_url.split('/')[3..-1].join('/')
-      file_id = CGI::unescape file_id
-      file_id.gsub!(/<[^>]*>/, '') # sanitize HTML tags
-      file_id = file_id.tidy_bytes unless file_id == ""
+
+      raw_tail = file_url.split('/')[3..-1]&.join('/')
+      file_id = sanitize_and_prepare_id(raw_tail, file_url)
       if file_id.nil?
         puts "Malformed file url, ignoring: #{file_url}"
-      elsif file_id.include?('<') || file_id.include?('>')
+        next
+      end
+
+      if file_id.include?('<') || file_id.include?('>')
         puts "Invalid characters in file_id after sanitization, ignoring: #{file_url}"
       else
         if match_exclude_filter(file_url)
           puts "File url matches exclude filter, ignoring: #{file_url}"
-        elsif not match_only_filter(file_url)
+        elsif !match_only_filter(file_url)
           puts "File url doesn't match only filter, ignoring: #{file_url}"
         elsif file_list_curated[file_id]
           unless file_list_curated[file_id][:timestamp] > file_timestamp
-            file_list_curated[file_id] = {file_url: file_url, timestamp: file_timestamp}
+            file_list_curated[file_id] = { file_url: file_url, timestamp: file_timestamp }
           end
         else
-          file_list_curated[file_id] = {file_url: file_url, timestamp: file_timestamp}
+          file_list_curated[file_id] = { file_url: file_url, timestamp: file_timestamp }
         end
       end
     end
@@ -398,24 +399,32 @@ class WaybackMachineDownloader
     file_list_curated = Hash.new
     get_all_snapshots_to_consider.each do |file_timestamp, file_url|
       next unless file_url.include?('/')
-      file_id = file_url.split('/')[3..-1].join('/')
-      file_id_and_timestamp = [file_timestamp, file_id].join('/')
-      file_id_and_timestamp = CGI::unescape file_id_and_timestamp
-      file_id_and_timestamp.gsub!(/<[^>]*>/, '') # sanitize HTML tags
-      file_id_and_timestamp = file_id_and_timestamp.tidy_bytes unless file_id_and_timestamp == ""
+
+      raw_tail = file_url.split('/')[3..-1]&.join('/')
+      file_id = sanitize_and_prepare_id(raw_tail, file_url)
       if file_id.nil?
         puts "Malformed file url, ignoring: #{file_url}"
-      elsif file_id_and_timestamp.include?('<') || file_id_and_timestamp.include?('>')
+        next
+      end
+
+      file_id_and_timestamp_raw = [file_timestamp, file_id].join('/')
+      file_id_and_timestamp = sanitize_and_prepare_id(file_id_and_timestamp_raw, file_url)
+      if file_id_and_timestamp.nil?
+        puts "Malformed file id/timestamp combo, ignoring: #{file_url}"
+        next
+      end
+
+      if file_id_and_timestamp.include?('<') || file_id_and_timestamp.include?('>')
         puts "Invalid characters in file_id after sanitization, ignoring: #{file_url}"
       else
         if match_exclude_filter(file_url)
           puts "File url matches exclude filter, ignoring: #{file_url}"
-        elsif not match_only_filter(file_url)
+        elsif !match_only_filter(file_url)
           puts "File url doesn't match only filter, ignoring: #{file_url}"
         elsif file_list_curated[file_id_and_timestamp]
-          puts "Duplicate file and timestamp combo, ignoring: #{file_id}" if @verbose
+          # duplicate combo, ignore silently (verbose flag not shown here)
         else
-          file_list_curated[file_id_and_timestamp] = {file_url: file_url, timestamp: file_timestamp}
+          file_list_curated[file_id_and_timestamp] = { file_url: file_url, timestamp: file_timestamp }
         end
       end
     end
@@ -755,6 +764,20 @@ class WaybackMachineDownloader
       "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] #{msg}\n"
     end
     logger
+  end
+    
+  # safely sanitize a file id (or id+timestamp)
+  def sanitize_and_prepare_id(raw, file_url)
+    return nil if raw.nil?
+    begin
+      raw = CGI.unescape(raw) rescue raw
+      raw.gsub!(/<[^>]*>/, '')
+      raw = raw.tidy_bytes unless raw.empty?
+      raw
+    rescue => e
+      @logger&.warn("Failed to sanitize file id from #{file_url}: #{e.message}")
+      nil
+    end
   end
 
   def download_with_retry(file_path, file_url, file_timestamp, connection, redirect_count = 0)
