@@ -11,6 +11,7 @@ require 'concurrent-ruby'
 require 'logger'
 require 'zlib'
 require 'stringio'
+require 'digest'
 require_relative 'wayback_machine_downloader/tidy_bytes'
 require_relative 'wayback_machine_downloader/to_regex'
 require_relative 'wayback_machine_downloader/archive_api'
@@ -171,12 +172,19 @@ class WaybackMachineDownloader
 
   def backup_name
     url_to_process = @base_url.end_with?('/*') ? @base_url.chomp('/*') : @base_url
-    
-    if url_to_process.include? '//'
+    raw = if url_to_process.include?('//')
       url_to_process.split('/')[2]
     else
       url_to_process
     end
+
+    # sanitize for Windows (and safe cross-platform) to avoid ENOTDIR on mkdir (colon in host:port)
+    if Gem.win_platform?
+      raw = raw.gsub(/[:*?"<>|]/, '_')
+      raw = raw.gsub(/[ .]+\z/, '')
+    end
+    raw = 'site' if raw.nil? || raw.empty?
+    raw
   end
 
   def backup_path
@@ -768,16 +776,81 @@ class WaybackMachineDownloader
     
   # safely sanitize a file id (or id+timestamp)
   def sanitize_and_prepare_id(raw, file_url)
-    return nil if raw.nil?
+    return nil if raw.nil? || raw.empty?
+    original = raw.dup
     begin
-      raw = CGI.unescape(raw) rescue raw
-      raw.gsub!(/<[^>]*>/, '')
-      raw = raw.tidy_bytes unless raw.empty?
+      # work on a binary copy to avoid premature encoding errors
+      raw = raw.dup.force_encoding(Encoding::BINARY)
+
+      # percent-decode (repeat until stable in case of double-encoding)
+      loop do
+        decoded = raw.gsub(/%([0-9A-Fa-f]{2})/) { [$1].pack('H2') }
+        break if decoded == raw
+        raw = decoded
+      end
+
+      # try tidy_bytes
+      begin
+        raw = raw.tidy_bytes
+      rescue StandardError
+        # fallback: scrub to UTF-8
+        raw = raw.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
+      end
+
+      # ensure UTF-8 and scrub again
+      unless raw.encoding == Encoding::UTF_8 && raw.valid_encoding?
+        raw = raw.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
+      end
+
+      # strip HTML/comment artifacts & control chars
+      raw.gsub!(/<!--+/, '')
+      raw.gsub!(/[\x00-\x1F]/, '')
+
+      # split query; hash it for stable short name
+      path_part, query_part = raw.split('?', 2)
+      if query_part && !query_part.empty?
+        q_digest = Digest::SHA256.hexdigest(query_part)[0, 12]
+        if path_part.include?('.')
+          pre, _sep, post = path_part.rpartition('.')
+          path_part = "#{pre}__q#{q_digest}.#{post}"
+        else
+          path_part = "#{path_part}__q#{q_digest}"
+        end
+      end
+      raw = path_part
+
+      # collapse slashes & trim leading slash
+      raw.gsub!(%r{/+}, '/')
+      raw.sub!(%r{\A/}, '')
+
+      # segment-wise sanitation
+      raw = raw.split('/').map do |segment|
+        seg = segment.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
+        seg = seg.gsub(/[:*?"<>|\\]/) { |c| "%#{c.ord.to_s(16).upcase}" }
+        seg = seg.gsub(/[ .]+\z/, '') if Gem.win_platform?
+        seg.empty? ? '_' : seg
+      end.join('/')
+
+      # remove any remaining angle brackets
+      raw.tr!('<>', '')
+
+      # final fallback if empty
+      raw = "file__#{Digest::SHA1.hexdigest(original)[0,10]}" if raw.nil? || raw.empty?
+
       raw
     rescue => e
       @logger&.warn("Failed to sanitize file id from #{file_url}: #{e.message}")
-      nil
+      # deterministic fallback – never return nil so caller won’t mark malformed
+      "file__#{Digest::SHA1.hexdigest(original)[0,10]}"
     end
+  end
+
+  # wrap URL in parentheses if it contains characters that commonly break unquoted
+  # Windows CMD usage (e.g., &). This is only for display; user still must quote
+  # when invoking manually.
+  def safe_display_url(url)
+    return url unless url && url.match?(/[&]/)
+    "(#{url})"
   end
 
   def download_with_retry(file_path, file_url, file_timestamp, connection, redirect_count = 0)
