@@ -2,24 +2,13 @@
 
 # URLs in HTML attributes
 def rewrite_html_attr_urls(content)
-  
-  content.gsub!(/(\s(?:href|src|action|data-src|data-url)=["'])https?:\/\/web\.archive\.org\/web\/[0-9]+(?:id_)?\/([^"']+)(["'])/i) do
-    prefix, url, suffix = $1, $2, $3
-    
-    if url.start_with?('http')
-      begin
-        uri = URI.parse(url)
-        path = uri.path
-        path = path[1..-1] if path.start_with?('/')
-        "#{prefix}#{path}#{suffix}"
-      rescue
-        "#{prefix}#{url}#{suffix}"
-      end
-    elsif url.start_with?('/')
-      "#{prefix}./#{url[1..-1]}#{suffix}"
-    else
-      "#{prefix}#{url}#{suffix}"
-    end
+  content.gsub!(/(\s(?:href|src|action|data-src|data-url|content)=["'])(https?:)?\/\/web\.archive\.org\/web\/[0-9]+(?:[a-z_]+)?\/(https?:\/\/[^"']+)(["'])/i) do
+    prefix, original_proto, inner_url, suffix = $1, $2, $3, $4
+
+    puts "Inner URL: #{inner_url}\r\n"
+
+    # Ha nincs megadva protokoll, adj hozzá
+    "#{prefix}#{inner_url.start_with?('http') ? inner_url : 'https://' + inner_url.sub(%r{^//}, '')}#{suffix}"
   end
   content
 end
@@ -51,23 +40,9 @@ end
 # URLs in JavaScript
 def rewrite_js_urls(content)
   
-  content.gsub!(/(["'])https?:\/\/web\.archive\.org\/web\/[0-9]+(?:id_)?\/([^"']+)(["'])/i) do
-    quote_start, url, quote_end = $1, $2, $3
-    
-    if url.start_with?('http')
-      begin
-        uri = URI.parse(url)
-        path = uri.path
-        path = path[1..-1] if path.start_with?('/')
-        "#{quote_start}#{path}#{quote_end}"
-      rescue
-        "#{quote_start}#{url}#{quote_end}"
-      end
-    elsif url.start_with?('/')
-      "#{quote_start}./#{url[1..-1]}#{quote_end}"
-    else
-      "#{quote_start}#{url}#{quote_end}"
-    end
+  content.gsub!(/(["'])\/\/web\.archive\.org\/web\/\d+(?:[a-z_]+)?\/(https?:\/\/[^"']+)(["'])/i) do
+    quote_start, inner_url, quote_end = $1, $2, $3
+    "#{quote_start}#{inner_url}#{quote_end}"
   end
   
   content
